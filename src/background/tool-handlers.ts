@@ -17,6 +17,7 @@ import {
   createStateHandlers,
   createTabHandlers,
   createUtilityHandlers,
+  createDevtoolsHandlers,
 } from './tools/handlers';
 
 /**
@@ -59,6 +60,7 @@ export function createToolHandlers(tabManager: TabManager) {
     ...createStateHandlers(ctx),
     ...createTabHandlers(ctx),
     ...createUtilityHandlers(ctx),
+    ...createDevtoolsHandlers(ctx),
   };
 
   /**
@@ -156,7 +158,19 @@ function getToolDescription(type: string, payload: unknown, result: unknown): st
     case 'browser_resize_viewport':
       return `Resize to ${p?.width}x${p?.height}`;
     case 'browser_upload_file':
-      return `Upload file: ${p?.filePath}`;
+      return `Upload file: ${p?.filePath ?? (p?.filePaths as string[] | undefined)?.join(', ')}`;
+    case 'browser_network_requests':
+      return `Network requests (${((r?.requests as unknown[]) ?? []).length})`;
+    case 'browser_network_request':
+      return `Network request [${p?.index}]${p?.part ? ` ${p.part}` : ''}`;
+    case 'browser_get_console_logs':
+      return `Console logs (${((r?.logs as unknown[]) ?? []).length})`;
+    case 'browser_cdp':
+      return `CDP ${p?.method}`;
+    case 'browser_drop':
+      return `Drop on "${p?.ref || p?.selector}"`;
+    case 'browser_fill_form':
+      return `Fill form (${((p?.fields as unknown[]) ?? []).length} fields)`;
     case 'browser_select_option':
       return `Select option in "${p?.ref || p?.selector}"`;
     case 'browser_pdf':

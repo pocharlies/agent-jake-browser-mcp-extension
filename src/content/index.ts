@@ -21,6 +21,7 @@ import type { ContentScriptRequest, ContentScriptResponse, Coordinates } from '@
 import { TIMEOUTS, getHighlightCSS } from '@/constants';
 import { CONFIG } from '@/types/config';
 import { generateCompactState, formatCompactState, findCompact } from './compact-state';
+import { handleDispatchDrop, handleFillField } from './form-actions';
 
 // Visual highlight overlay
 let highlightOverlay: HTMLDivElement | null = null;
@@ -106,6 +107,12 @@ async function handleRequest(request: ContentScriptRequest): Promise<unknown> {
 
     case 'focusElement':
       return handleFocusElement(payload as { selector: string });
+
+    case 'dispatchDrop':
+      return handleDispatchDrop(payload as Parameters<typeof handleDispatchDrop>[0]);
+
+    case 'fillField':
+      return handleFillField(payload as Parameters<typeof handleFillField>[0]);
 
     default:
       throw new Error(`Unknown action: ${action}`);

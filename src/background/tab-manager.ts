@@ -7,6 +7,7 @@ import { log } from '@/utils/logger';
 import { logTab, logError } from './activity-log';
 import type { TabInfo } from '@/types/messages';
 import { DEBUGGER } from '@/constants';
+import { pageEvents } from './page-events';
 
 export interface CdpStatus {
   connectedTabId: number | null;
@@ -116,6 +117,7 @@ export class TabManager {
 
     try {
       // Attach debugger
+      if (this.connectedTabId !== tabId) pageEvents.reset(); // another tab: its history is not ours
       await this.attachDebugger(tabId);
 
       this.connectedTabId = tabId;
@@ -242,8 +244,35 @@ export class TabManager {
       }
     }
 
+    // Console and network capture (see page-events.ts). Not fatal: input keeps working
+    // without them, only browser_network_requests / console come back empty.
+    for (const domain of ['Network', 'Log'] as const) {
+      try {
+        await chrome.debugger.sendCommand({ tabId }, `${domain}.enable`);
+      } catch (enableError) {
+        log.warn(`${domain} domain not enabled:`, enableError);
+      }
+    }
+
     await this.installDialogAutoAccept(tabId);
   }
+
+  /**
+   * Resolve with the params of the next `method` event from the connected tab.
+   * Used by the file chooser flow of browser_upload_file.
+   */
+  waitForDebuggerEvent<T = Record<string, unknown>>(method: string, timeout = 10000): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.eventWaiters.delete(waiter);
+        reject(new Error(`Timed out after ${timeout}ms waiting for ${method}`));
+      }, timeout);
+      const waiter = { method, resolve: (p: unknown) => { clearTimeout(timer); resolve(p as T); } };
+      this.eventWaiters.add(waiter);
+    });
+  }
+
+  private eventWaiters = new Set<{ method: string; resolve: (params: unknown) => void }>();
 
   private async installDialogAutoAccept(tabId: number): Promise<void> {
     const debuggerTarget = { tabId };
@@ -265,6 +294,15 @@ export class TabManager {
   ): Promise<void> => {
     if (!this.connectedTabId || source.tabId !== this.connectedTabId) {
       return;
+    }
+
+    pageEvents.handle(method, params as Record<string, unknown> | undefined);
+
+    for (const waiter of this.eventWaiters) {
+      if (waiter.method === method) {
+        this.eventWaiters.delete(waiter);
+        waiter.resolve(params ?? {});
+      }
     }
 
     if (method !== 'Page.javascriptDialogOpening') {

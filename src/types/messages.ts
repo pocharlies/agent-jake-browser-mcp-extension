@@ -34,7 +34,13 @@ export type ToolName =
   | 'browser_get_html'
   | 'browser_iframe_eval'
   | 'browser_iframe_click'
-  | 'browser_pdf';
+  | 'browser_pdf'
+  | 'browser_upload_file'
+  | 'browser_network_requests'
+  | 'browser_network_request'
+  | 'browser_cdp'
+  | 'browser_drop'
+  | 'browser_fill_form';
 
 // Messages from browser-mcp server
 export interface IncomingMessage {
