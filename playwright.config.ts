@@ -10,6 +10,8 @@ const extensionPath = path.join(__dirname, 'dist');
 
 export default defineConfig({
   testDir: './tests',
+  testMatch: '**/*.spec.ts',
+  testIgnore: '**/unit/**',
   timeout: 30000,
   retries: 0,
   workers: 1, // Extensions require single worker
