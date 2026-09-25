@@ -66,7 +66,7 @@ export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
       if (want('request-headers')) out.requestHeaders = e.requestHeaders;
       if (want('request-body')) {
         let body = e.postData;
-        if (body === undefined && e.hasPostData) {
+        if (body === undefined && e.hasPostData && !e.redirected) {
           body = await ctx.tabManager
             .sendDebuggerCommand<{ postData: string }>('Network.getRequestPostData', { requestId: e.requestId })
             .then((r) => r.postData)
@@ -76,7 +76,8 @@ export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
       }
       if (want('response-headers')) out.responseHeaders = e.responseHeaders ?? null;
       if (want('response-body')) {
-        if (e.status === undefined) out.responseBody = null;
+        if (e.redirected) out.responseBody = '(unavailable: redirect response)';
+        else if (e.status === undefined) out.responseBody = null;
         else {
           try {
             const r = await ctx.tabManager.sendDebuggerCommand<{ body: string; base64Encoded: boolean }>(

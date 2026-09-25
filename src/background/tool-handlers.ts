@@ -75,7 +75,7 @@ export function createToolHandlers(tabManager: TabManager) {
     try {
       const handler = handlers[type];
       if (!handler) {
-        logError(type, `Unknown tool: ${type}`, { payload });
+        logError('unknown_tool', `Unknown tool: ${type}`);
         return {
           id,
           success: false,

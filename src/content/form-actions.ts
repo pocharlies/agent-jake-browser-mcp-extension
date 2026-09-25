@@ -87,6 +87,9 @@ export async function handleFillField(payload: {
     case 'radio': {
       const want = value === true || String(value).toLowerCase() === 'true';
       const isChecked = el instanceof HTMLInputElement ? el.checked : el.getAttribute('aria-checked') === 'true';
+      if (kind === 'radio' && isChecked && !want) {
+        throw new Error('A selected radio cannot be unchecked; select another option in its group');
+      }
       if (isChecked !== want) (el as HTMLElement).click();
       break;
     }

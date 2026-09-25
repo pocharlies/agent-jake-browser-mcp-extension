@@ -261,13 +261,30 @@ export class TabManager {
    * Resolve with the params of the next `method` event from the connected tab.
    * Used by the file chooser flow of browser_upload_file.
    */
-  waitForDebuggerEvent<T = Record<string, unknown>>(method: string, timeout = 10000): Promise<T> {
+  waitForDebuggerEvent<T = Record<string, unknown>>(method: string, timeout = 10000, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const waiter = { method, resolve: (params: unknown) => {
+        cleanup();
+        resolve(params as T);
+      } };
+      const cleanup = () => {
+        clearTimeout(timer);
         this.eventWaiters.delete(waiter);
+        signal?.removeEventListener('abort', onAbort);
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(new Error(`Stopped waiting for ${method}`));
+      };
+      const timer = setTimeout(() => {
+        cleanup();
         reject(new Error(`Timed out after ${timeout}ms waiting for ${method}`));
       }, timeout);
-      const waiter = { method, resolve: (p: unknown) => { clearTimeout(timer); resolve(p as T); } };
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+      signal?.addEventListener('abort', onAbort, { once: true });
       this.eventWaiters.add(waiter);
     });
   }

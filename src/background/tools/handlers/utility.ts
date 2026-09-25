@@ -283,8 +283,10 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
 
       // Button (or an input inside an iframe): let the page open its chooser and answer it.
       await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+      const chooser = new AbortController();
       try {
-        const opened = ctx.tabManager.waitForDebuggerEvent<{ backendNodeId: number }>('Page.fileChooserOpened', 10000);
+        const opened = ctx.tabManager.waitForDebuggerEvent<{ backendNodeId: number }>('Page.fileChooserOpened', 10000, chooser.signal);
+        void opened.catch(() => {});
         await ctx.sendToContent('scrollIntoView', { selector: target.selector }, target.frameId);
         const coords = await ctx.sendToContent<{ x: number; y: number; exact?: boolean }>(
           'getElementCoordinates', { selector: target.selector, clickable: true }, target.frameId);
@@ -299,6 +301,7 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
         await ctx.tabManager.sendDebuggerCommand('DOM.setFileInputFiles', { backendNodeId, files });
         return { uploaded: true, files, via: 'fileChooser' };
       } finally {
+        chooser.abort();
         await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: false }).catch(() => {});
       }
     },

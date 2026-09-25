@@ -38,6 +38,7 @@ export interface NetworkEntry {
   responseHeaders?: Record<string, string>;
   failure?: string;
   finished: boolean;
+  redirected: boolean;
   timestamp: number;
 }
 
@@ -136,6 +137,7 @@ export class PageEventLog {
           prev.statusText = params.redirectResponse.statusText;
           prev.responseHeaders = params.redirectResponse.headers;
           prev.finished = true;
+          prev.redirected = true;
         }
         const req = params.request ?? {};
         const entry: NetworkEntry = {
@@ -149,6 +151,7 @@ export class PageEventLog {
           postData: req.postData,
           hasPostData: !!req.hasPostData || req.postData !== undefined,
           finished: false,
+          redirected: false,
           timestamp: Date.now(),
         };
         this.byRequestId.set(params.requestId, entry);

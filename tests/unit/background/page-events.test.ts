@@ -63,6 +63,8 @@ describe('PageEventLog network', () => {
 
     expect(l.networkRequests().map((e) => e.url)).toEqual(['https://x.test/b']);
     expect(l.networkRequests({ all: true }).map((e) => e.status)).toEqual([undefined, 302, undefined]);
+    expect(l.networkRequest(2)?.redirected).toBe(true);
+    expect(l.networkRequest(3)?.redirected).toBe(false);
   });
 
   it('is a ring buffer', () => {

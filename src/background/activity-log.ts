@@ -4,9 +4,35 @@
  */
 
 import type { ActivityEntry, ActivityEntryInput, ActivityLogResponse } from '@/types/activity';
+import { schemas } from './tools/schemas';
 
 const STORAGE_KEY = 'agent_jake_activity_log';
 const MAX_ENTRIES = 100;
+const META_ACTIONS = new Set([
+  'unknown_tool', 'tab_connect', 'tab_disconnect', 'ws_connect', 'ws_close',
+  'ws_error', 'ws_disconnect', 'ws_reconnect_failed', 'ws_reconnecting',
+]);
+const SAFE_DETAIL_KEYS = new Set(['tabId', 'code', 'attempts', 'maxAttempts', 'attempt', 'delayMs', 'pendingRequestsCancelled']);
+
+// Activity history is durable and exposed to extension contexts. Keep only
+// operational metadata; tool payloads, page content, URLs and errors may be secret.
+function safeEntry(input: ActivityEntryInput, id: string, timestamp: number): ActivityEntry {
+  const action = Object.hasOwn(schemas, input.action) || META_ACTIONS.has(input.action)
+    ? input.action : 'unknown';
+  const details = Object.fromEntries(Object.entries(input.details ?? {}).filter(
+    ([key, value]) => SAFE_DETAIL_KEYS.has(key) && typeof value === 'number' && Number.isFinite(value),
+  ));
+  return {
+    id,
+    timestamp,
+    type: input.type,
+    action,
+    description: action.replace(/_/g, ' '),
+    success: input.success,
+    ...(input.durationMs === undefined ? {} : { durationMs: input.durationMs }),
+    ...(Object.keys(details).length ? { details } : {}),
+  };
+}
 
 class ActivityLog {
   private static instance: ActivityLog;
@@ -28,11 +54,7 @@ class ActivityLog {
    * Auto-generates id and timestamp.
    */
   async addEntry(input: ActivityEntryInput): Promise<ActivityEntry> {
-    const entry: ActivityEntry = {
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      ...input,
-    };
+    const entry = safeEntry(input, crypto.randomUUID(), Date.now());
 
     const entries = await this.loadEntries();
     entries.unshift(entry); // Add to beginning (newest first)
@@ -87,7 +109,11 @@ class ActivityLog {
     try {
       const result = await chrome.storage.local.get(STORAGE_KEY);
       const stored = result[STORAGE_KEY];
-      this.cache = Array.isArray(stored) ? stored : [];
+      const oldEntries: ActivityEntry[] = Array.isArray(stored) ? stored : [];
+      this.cache = oldEntries.map((entry) => safeEntry(entry, entry.id, entry.timestamp));
+      if (oldEntries.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(this.cache![index]))) {
+        await this.saveEntries(this.cache);
+      }
       return this.cache;
     } catch (error) {
       console.error('[ActivityLog] Failed to load entries:', error);

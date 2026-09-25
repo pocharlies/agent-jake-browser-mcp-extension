@@ -66,6 +66,14 @@ describe('TabManager CDP readiness', () => {
     vi.clearAllMocks();
   });
 
+  it('cancels a file chooser event wait without a late timeout rejection', async () => {
+    const manager = new TabManager();
+    const controller = new AbortController();
+    const wait = manager.waitForDebuggerEvent('Page.fileChooserOpened', 10000, controller.signal);
+    controller.abort();
+    await expect(wait).rejects.toThrow('Stopped waiting for Page.fileChooserOpened');
+  });
+
   it('reports not ready when no tab is connected', async () => {
     const manager = new TabManager();
     const status = await manager.getCdpStatus();
