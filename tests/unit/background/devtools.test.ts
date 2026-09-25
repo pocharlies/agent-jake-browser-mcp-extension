@@ -23,13 +23,47 @@ describe('browser_network_request redirect bodies', () => {
     sendDebuggerCommand.mockImplementation(async (method: string) =>
       method === 'Network.getResponseBody' ? { body: 'final-body', base64Encoded: false } : { postData: 'final-post' });
 
-    const redirect = await handlers.browser_network_request({ index: 1 }) as Record<string, unknown>;
+    const defaultResult = await handlers.browser_network_request({ index: 1 }) as Record<string, unknown>;
+    expect(defaultResult).not.toHaveProperty('requestBody');
+    expect(defaultResult).not.toHaveProperty('responseBody');
+
+    const redirect = await handlers.browser_network_request({ index: 1, part: 'response-body' }) as Record<string, unknown>;
     expect(redirect.responseBody).toBe('(unavailable: redirect response)');
-    expect(redirect.requestBody).toBeNull();
+    const redirectRequest = await handlers.browser_network_request({ index: 1, part: 'request-body' }) as Record<string, unknown>;
+    expect(redirectRequest.requestBody).toBeNull();
     expect(sendDebuggerCommand).not.toHaveBeenCalled();
 
     const final = await handlers.browser_network_request({ index: 2, part: 'response-body' }) as Record<string, unknown>;
     expect(final.responseBody).toBe('final-body');
     expect(sendDebuggerCommand).toHaveBeenCalledWith('Network.getResponseBody', { requestId: 'same' });
+  });
+
+  it('redacts sensitive headers regardless of casing without changing captured data', async () => {
+    pageEvents.handle('Network.requestWillBeSent', { requestId: 'auth', request: {
+      url: 'https://user:password@example.test/private/path?token=secret#fragment', headers: {
+        cOoKiE: 'session=secret', AUTHORIZATION: 'Bearer secret', 'Proxy-Authorization': 'Basic secret',
+        'X-Session-ID': 'secret', 'x-AuThToKeN': 'secret', Accept: 'application/json',
+      },
+    } });
+    pageEvents.handle('Network.responseReceived', { requestId: 'auth', response: { status: 200, headers: {
+      'sEt-CoOkIe': 'session=secret; HttpOnly', 'Content-Type': 'application/json',
+    } } });
+
+    const index = pageEvents.networkRequests()[0].index;
+    const result = await handlers.browser_network_request({ index }) as Record<string, unknown>;
+    expect(result.requestHeaders).toEqual({
+      cOoKiE: '[REDACTED]', AUTHORIZATION: '[REDACTED]', 'Proxy-Authorization': '[REDACTED]',
+      'X-Session-ID': '[REDACTED]', 'x-AuThToKeN': '[REDACTED]', Accept: 'application/json',
+    });
+    expect(result.responseHeaders).toEqual({ 'sEt-CoOkIe': '[REDACTED]', 'Content-Type': 'application/json' });
+    expect(result.url).toBe('https://example.test/private/path');
+    const list = await handlers.browser_network_requests({}) as { requests: Array<{ url: string }> };
+    expect(list.requests[0].url).toBe('https://example.test/private/path');
+    expect(JSON.stringify(result)).not.toContain('secret');
+    expect(JSON.stringify(list)).not.toContain('secret');
+    expect(pageEvents.networkRequest(index)?.requestHeaders.cOoKiE).toBe('session=secret');
+    expect(result).not.toHaveProperty('requestBody');
+    expect(result).not.toHaveProperty('responseBody');
+    expect(sendDebuggerCommand).not.toHaveBeenCalled();
   });
 });

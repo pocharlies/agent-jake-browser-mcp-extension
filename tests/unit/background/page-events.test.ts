@@ -50,7 +50,7 @@ describe('PageEventLog network', () => {
     expect(l.networkRequests({ filter: 'API' }).map((e) => e.url)).toEqual(['https://x.test/api']);
     const one = l.networkRequest(1)!;
     expect(one.status).toBe(200);
-    expect(one.requestHeaders).toEqual({ a: '1', cookie: 'c' });
+    expect(one.requestHeaders).toEqual({ a: '1' });
     expect(l.networkRequest(3)!.failure).toBe('net::ERR_FAILED');
   });
 
@@ -65,6 +65,19 @@ describe('PageEventLog network', () => {
     expect(l.networkRequests({ all: true }).map((e) => e.status)).toEqual([undefined, 302, undefined]);
     expect(l.networkRequest(2)?.redirected).toBe(true);
     expect(l.networkRequest(3)?.redirected).toBe(false);
+  });
+
+  it('ignores early and late ExtraInfo around redirect hops', () => {
+    const l = new PageEventLog();
+    l.handle('Network.requestWillBeSentExtraInfo', { requestId: 'R', headers: { Cookie: 'early' } });
+    l.handle(...req('R', 'https://x.test/start'));
+    l.handle(...req('R', 'https://x.test/end', 'XHR', { redirectResponse: { status: 302, headers: { Location: '/end' } } }));
+    l.handle('Network.requestWillBeSentExtraInfo', { requestId: 'R', headers: { Cookie: 'late' } });
+    l.handle('Network.responseReceivedExtraInfo', { requestId: 'R', headers: { 'Set-Cookie': 'late' } });
+
+    expect(l.networkRequest(1)?.requestHeaders).toEqual({ a: '1' });
+    expect(l.networkRequest(2)?.requestHeaders).toEqual({ a: '1' });
+    expect(l.networkRequest(2)?.responseHeaders).toBeUndefined();
   });
 
   it('is a ring buffer', () => {

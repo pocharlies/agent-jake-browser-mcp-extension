@@ -45,6 +45,9 @@ let tabManager: TabManager | null = null;
 async function initialize(): Promise<void> {
   log.info('Initializing Agent Jake Browser MCP Extension');
 
+  // Content scripts do not use storage.local; keep pairing credentials in trusted contexts.
+  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+
   // Create tab manager
   tabManager = new TabManager();
   await tabManager.initialize();

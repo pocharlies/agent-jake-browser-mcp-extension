@@ -6,6 +6,8 @@
  * Network.* for requests. Everything goes into ring buffers kept in the service worker;
  * nothing is stored on disk. Capture starts when the tab is connected — there is no
  * history from before that.
+ * ExtraInfo events are ignored: redirects reuse requestId and those events may arrive
+ * out of order, so their wire headers cannot be assigned safely to a hop.
  *
  * "Since the last navigation" is counted on Page.frameNavigated of the top frame. The
  * document request of that navigation is sent BEFORE the event arrives, so it is moved
@@ -160,12 +162,6 @@ export class PageEventLog {
         });
         return;
       }
-      case 'Network.requestWillBeSentExtraInfo': {
-        // Full headers as sent on the wire (cookies included).
-        const e = this.byRequestId.get(params.requestId);
-        if (e && params.headers) e.requestHeaders = { ...e.requestHeaders, ...params.headers };
-        return;
-      }
       case 'Network.responseReceived': {
         const e = this.byRequestId.get(params.requestId);
         if (!e) return;
@@ -174,11 +170,6 @@ export class PageEventLog {
         e.statusText = r.statusText;
         e.mimeType = r.mimeType;
         e.responseHeaders = { ...(e.responseHeaders ?? {}), ...(r.headers ?? {}) };
-        return;
-      }
-      case 'Network.responseReceivedExtraInfo': {
-        const e = this.byRequestId.get(params.requestId);
-        if (e && params.headers) e.responseHeaders = { ...(e.responseHeaders ?? {}), ...params.headers };
         return;
       }
       case 'Network.loadingFinished': {

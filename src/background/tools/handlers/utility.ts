@@ -282,9 +282,10 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
       }
 
       // Button (or an input inside an iframe): let the page open its chooser and answer it.
-      await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+      ctx.tabManager.beginFileChooser();
       const chooser = new AbortController();
       try {
+        await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: true });
         const opened = ctx.tabManager.waitForDebuggerEvent<{ backendNodeId: number }>('Page.fileChooserOpened', 10000, chooser.signal);
         void opened.catch(() => {});
         await ctx.sendToContent('scrollIntoView', { selector: target.selector }, target.frameId);
@@ -303,6 +304,7 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
       } finally {
         chooser.abort();
         await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: false }).catch(() => {});
+        ctx.tabManager.endFileChooser();
       }
     },
   };

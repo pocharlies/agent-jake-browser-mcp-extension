@@ -10,6 +10,30 @@ import { schemas } from '../schemas';
 import type { HandlerContext, HandlerMap } from './types';
 
 const TEXTY = /^(text\/|application\/(json|javascript|xml|x-www-form-urlencoded|graphql|ld\+json|problem\+json))|\+json|\+xml/;
+const SENSITIVE_HEADERS = new Set([
+  'cookie', 'setcookie', 'authorization', 'proxyauthorization',
+  'xsessionid', 'xauthtoken', 'xaccesstoken', 'xapikey', 'xcsrftoken', 'xxsrftoken',
+]);
+
+function redactUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) return '[REDACTED URL]';
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  } catch {
+    return '[REDACTED URL]';
+  }
+}
+
+function redactHeaders(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [
+    name, SENSITIVE_HEADERS.has(name.toLowerCase().replace(/[-_]/g, '')) ? '[REDACTED]' : value,
+  ]));
+}
 
 export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
   const { sendToContent, resolveRef } = ctx;
@@ -39,7 +63,7 @@ export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
       const requests = pageEvents.networkRequests({ includeStatic, all, filter }).map((e) => ({
         index: e.index,
         method: e.method,
-        url: e.url,
+        url: redactUrl(e.url),
         resourceType: e.resourceType,
         status: e.status ?? null,
         failure: e.failure ?? null,
@@ -52,19 +76,21 @@ export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
       const e = pageEvents.networkRequest(index);
       if (!e) throw new Error(`No request [${index}] in the buffer (see browser_network_requests)`);
 
-      const want = (p: string) => !part || part === p;
+      const wantHeaders = (p: string) => !part || part === p;
+      // Bodies can contain credentials. Reading one requires an explicit part.
+      const wantBody = (p: string) => part === p;
       const clip = (s: string) => (s.length > maxBodyChars ? `${s.slice(0, maxBodyChars)}\n… (${s.length - maxBodyChars} more chars)` : s);
       const out: Record<string, unknown> = {
         index: e.index,
         method: e.method,
-        url: e.url,
+        url: redactUrl(e.url),
         resourceType: e.resourceType,
         status: e.status ?? null,
         failure: e.failure ?? null,
       };
 
-      if (want('request-headers')) out.requestHeaders = e.requestHeaders;
-      if (want('request-body')) {
+      if (wantHeaders('request-headers')) out.requestHeaders = redactHeaders(e.requestHeaders);
+      if (wantBody('request-body')) {
         let body = e.postData;
         if (body === undefined && e.hasPostData && !e.redirected) {
           body = await ctx.tabManager
@@ -74,8 +100,8 @@ export function createDevtoolsHandlers(ctx: HandlerContext): HandlerMap {
         }
         out.requestBody = body === undefined ? null : clip(body);
       }
-      if (want('response-headers')) out.responseHeaders = e.responseHeaders ?? null;
-      if (want('response-body')) {
+      if (wantHeaders('response-headers')) out.responseHeaders = e.responseHeaders ? redactHeaders(e.responseHeaders) : null;
+      if (wantBody('response-body')) {
         if (e.redirected) out.responseBody = '(unavailable: redirect response)';
         else if (e.status === undefined) out.responseBody = null;
         else {

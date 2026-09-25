@@ -60,6 +60,7 @@ vi.mock('@/background/activity-log', () => ({
 }));
 
 import { TabManager } from '@/background/tab-manager';
+import { pageEvents } from '@/background/page-events';
 
 describe('TabManager CDP readiness', () => {
   beforeEach(() => {
@@ -72,6 +73,28 @@ describe('TabManager CDP readiness', () => {
     const wait = manager.waitForDebuggerEvent('Page.fileChooserOpened', 10000, controller.signal);
     controller.abort();
     await expect(wait).rejects.toThrow('Stopped waiting for Page.fileChooserOpened');
+  });
+
+  it('rejects a second file chooser until the first releases its lock', () => {
+    const manager = new TabManager();
+    manager.beginFileChooser();
+    expect(() => manager.beginFileChooser()).toThrow('already in progress');
+    manager.endFileChooser();
+    expect(() => manager.beginFileChooser()).not.toThrow();
+    manager.endFileChooser();
+  });
+
+  it('clears captured network and console data on disconnect and debugger detach', async () => {
+    const manager = new TabManager();
+    pageEvents.handle('Network.requestWillBeSent', { requestId: 'secret', request: { url: 'https://x.test', postData: 'secret' } });
+    pageEvents.handle('Runtime.consoleAPICalled', { args: [{ value: 'secret' }] });
+    await manager.disconnectTab();
+    expect(pageEvents.networkRequests()).toHaveLength(0);
+    expect(pageEvents.consoleMessages()).toHaveLength(0);
+
+    pageEvents.handle('Network.requestWillBeSent', { requestId: 'secret2', request: { url: 'https://x.test' } });
+    manager.markDebuggerDetached();
+    expect(pageEvents.networkRequests()).toHaveLength(0);
   });
 
   it('reports not ready when no tab is connected', async () => {

@@ -106,20 +106,30 @@ class ActivityLog {
       return this.cache;
     }
 
+    let stored: unknown;
     try {
       const result = await chrome.storage.local.get(STORAGE_KEY);
-      const stored = result[STORAGE_KEY];
-      const oldEntries: ActivityEntry[] = Array.isArray(stored) ? stored : [];
-      this.cache = oldEntries.map((entry) => safeEntry(entry, entry.id, entry.timestamp));
-      if (oldEntries.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(this.cache![index]))) {
-        await this.saveEntries(this.cache);
-      }
-      return this.cache;
+      stored = result[STORAGE_KEY];
     } catch (error) {
       console.error('[ActivityLog] Failed to load entries:', error);
       this.cache = [];
       return this.cache;
     }
+
+    const oldEntries: ActivityEntry[] = Array.isArray(stored) ? stored : [];
+    const sanitized = oldEntries.map((entry) => safeEntry(entry, entry.id, entry.timestamp));
+    if (oldEntries.some((entry, index) => JSON.stringify(entry) !== JSON.stringify(sanitized[index]))) {
+      try {
+        await chrome.storage.local.set({ [STORAGE_KEY]: sanitized });
+      } catch {
+        // A failed rewrite must not leave the old secret-bearing history in storage.
+        await chrome.storage.local.remove(STORAGE_KEY);
+        this.cache = [];
+        return this.cache;
+      }
+    }
+    this.cache = sanitized;
+    return sanitized;
   }
 
   /**

@@ -22,6 +22,7 @@ export class TabManager {
   private lastCdpError: string | null = null;
   private pendingNewTab: TabInfo | null = null;
   private newTabListener: ((tab: chrome.tabs.Tab) => void) | null = null;
+  private fileChooserInProgress = false;
 
   /**
    * Initialize tab manager, restoring state from storage.
@@ -140,6 +141,7 @@ export class TabManager {
    * Disconnect from the current tab.
    */
   async disconnectTab(): Promise<void> {
+    pageEvents.reset();
     if (!this.connectedTabId) {
       return;
     }
@@ -196,6 +198,7 @@ export class TabManager {
    * not the target list — is what answers it.
    */
   private async attachDebugger(tabId: number): Promise<void> {
+    pageEvents.reset();
     this.debuggerAttached = false;
 
     try {
@@ -257,10 +260,17 @@ export class TabManager {
     await this.installDialogAutoAccept(tabId);
   }
 
-  /**
-   * Resolve with the params of the next `method` event from the connected tab.
-   * Used by the file chooser flow of browser_upload_file.
-   */
+  /** Only one upload may consume the next file chooser event. */
+  beginFileChooser(): void {
+    if (this.fileChooserInProgress) throw new Error('A file chooser upload is already in progress');
+    this.fileChooserInProgress = true;
+  }
+
+  endFileChooser(): void {
+    this.fileChooserInProgress = false;
+  }
+
+  /** Resolve with the next matching event from the connected tab. */
   waitForDebuggerEvent<T = Record<string, unknown>>(method: string, timeout = 10000, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const waiter = { method, resolve: (params: unknown) => {
@@ -383,6 +393,7 @@ export class TabManager {
    * Mark debugger as detached (called from onDetach listener).
    */
   markDebuggerDetached(): void {
+    pageEvents.reset();
     this.debuggerAttached = false;
     this.lastCdpError = 'CDP_DEBUGGER_DETACHED: Debugger detached unexpectedly';
   }

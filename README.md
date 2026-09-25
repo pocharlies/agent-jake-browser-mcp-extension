@@ -144,6 +144,15 @@ Together, these provide a complete browser automation solution enabling AI agent
 
 4. **Monitor Status** - The popup shows connection state and activity log
 
+### Network inspection
+
+`browser_network_requests` and `browser_network_request` show URL origin and path,
+without URL credentials, query or fragment. `browser_network_request` redacts
+credential-bearing headers; there is currently no option to reveal those header
+values or the removed URL details. Without `part`, it returns metadata and
+headers only. Request and response bodies require an explicit `part` value and
+may contain credentials, so request them only when needed.
+
 ### Connection Indicators
 
 | Indicator | Meaning |

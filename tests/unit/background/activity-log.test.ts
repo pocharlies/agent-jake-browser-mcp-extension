@@ -51,4 +51,28 @@ describe('durable activity history', () => {
     expect(history.activities[0].description).toBe('browser get console logs');
     expect(JSON.stringify(stored[key])).not.toContain(secret);
   });
+
+  it('deletes old secret-bearing history if its sanitized rewrite fails', async () => {
+    await activityLog.clear();
+    stored[key] = [{ id: 'old', timestamp: 1, type: 'tool', action: 'browser_network_request',
+      description: 'old-secret', details: { responseBody: 'old-secret' }, success: true }];
+    vi.mocked(chrome.storage.local.set).mockRejectedValueOnce(new Error('quota exceeded'));
+    vi.resetModules();
+    const { activityLog: freshLog } = await import('@/background/activity-log');
+
+    expect((await freshLog.getAll()).activities).toEqual([]);
+    expect(stored[key]).toBeUndefined();
+  });
+
+  it('fails closed if neither rewriting nor deleting old secret-bearing history works', async () => {
+    await activityLog.clear();
+    stored[key] = [{ id: 'old', timestamp: 1, type: 'tool', action: 'browser_network_request',
+      description: 'old-secret', success: true }];
+    vi.mocked(chrome.storage.local.set).mockRejectedValueOnce(new Error('quota exceeded'));
+    vi.mocked(chrome.storage.local.remove).mockRejectedValueOnce(new Error('storage unavailable'));
+    vi.resetModules();
+    const { activityLog: freshLog } = await import('@/background/activity-log');
+
+    await expect(freshLog.getAll()).rejects.toThrow('storage unavailable');
+  });
 });
