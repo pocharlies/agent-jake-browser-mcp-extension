@@ -12,7 +12,7 @@ import type { HandlerContext, HandlerMap } from './types';
 const TEXTY = /^(text\/|application\/(json|javascript|xml|x-www-form-urlencoded|graphql|ld\+json|problem\+json))|\+json|\+xml/;
 const SENSITIVE_HEADERS = new Set([
   'cookie', 'setcookie', 'authorization', 'proxyauthorization',
-  'xsessionid', 'xauthtoken', 'xaccesstoken', 'xapikey', 'xcsrftoken', 'xxsrftoken',
+  'xsessionid', 'xauthtoken', 'xaccesstoken', 'xaccesskey', 'xapikey', 'xcsrftoken', 'xxsrftoken',
 ]);
 
 function redactUrl(raw: string): string {

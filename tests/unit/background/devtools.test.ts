@@ -42,7 +42,7 @@ describe('browser_network_request redirect bodies', () => {
     pageEvents.handle('Network.requestWillBeSent', { requestId: 'auth', request: {
       url: 'https://user:password@example.test/private/path?token=secret#fragment', headers: {
         cOoKiE: 'session=secret', AUTHORIZATION: 'Bearer secret', 'Proxy-Authorization': 'Basic secret',
-        'X-Session-ID': 'secret', 'x-AuThToKeN': 'secret', Accept: 'application/json',
+        'X-Session-ID': 'secret', 'x-AuThToKeN': 'secret', 'X-Access-Key': 'secret', Accept: 'application/json',
       },
     } });
     pageEvents.handle('Network.responseReceived', { requestId: 'auth', response: { status: 200, headers: {
@@ -53,7 +53,7 @@ describe('browser_network_request redirect bodies', () => {
     const result = await handlers.browser_network_request({ index }) as Record<string, unknown>;
     expect(result.requestHeaders).toEqual({
       cOoKiE: '[REDACTED]', AUTHORIZATION: '[REDACTED]', 'Proxy-Authorization': '[REDACTED]',
-      'X-Session-ID': '[REDACTED]', 'x-AuThToKeN': '[REDACTED]', Accept: 'application/json',
+      'X-Session-ID': '[REDACTED]', 'x-AuThToKeN': '[REDACTED]', 'X-Access-Key': '[REDACTED]', Accept: 'application/json',
     });
     expect(result.responseHeaders).toEqual({ 'sEt-CoOkIe': '[REDACTED]', 'Content-Type': 'application/json' });
     expect(result.url).toBe('https://example.test/private/path');
