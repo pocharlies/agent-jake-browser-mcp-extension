@@ -14,6 +14,7 @@ import { WebSocketClient } from './ws-client';
 import { TabManager } from './tab-manager';
 import { createToolHandlers } from './tool-handlers';
 import { activityLog } from './activity-log';
+import { preparePrivateStorage } from './storage-privacy';
 import {
   cancelPairing,
   getPairingInfo,
@@ -45,8 +46,7 @@ let tabManager: TabManager | null = null;
 async function initialize(): Promise<void> {
   log.info('Initializing Agent Jake Browser MCP Extension');
 
-  // Content scripts do not use storage.local; keep pairing credentials in trusted contexts.
-  await chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+  await preparePrivateStorage();
 
   // Create tab manager
   tabManager = new TabManager();
