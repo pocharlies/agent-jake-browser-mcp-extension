@@ -284,8 +284,10 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
       // Button (or an input inside an iframe): let the page open its chooser and answer it.
       ctx.tabManager.beginFileChooser();
       const chooser = new AbortController();
+      const tabId = ctx.tabManager.getConnectedTabId();
       try {
-        await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: true });
+        if (tabId === null) throw new Error('No tab connected for file chooser');
+        await ctx.tabManager.setFileChooserInterception(tabId, true);
         const opened = ctx.tabManager.waitForDebuggerEvent<{ backendNodeId: number }>('Page.fileChooserOpened', 10000, chooser.signal);
         void opened.catch(() => {});
         await ctx.sendToContent('scrollIntoView', { selector: target.selector }, target.frameId);
@@ -299,11 +301,11 @@ export function createUtilityHandlers(ctx: HandlerContext): HandlerMap {
           await ctx.dispatchMouseEventTyped('mouseReleased', coords.x, coords.y, 'left', 1);
         }
         const { backendNodeId } = await opened;
-        await ctx.tabManager.sendDebuggerCommand('DOM.setFileInputFiles', { backendNodeId, files });
+        await ctx.tabManager.setChooserFiles(tabId, backendNodeId, files);
         return { uploaded: true, files, via: 'fileChooser' };
       } finally {
         chooser.abort();
-        await ctx.tabManager.sendDebuggerCommand('Page.setInterceptFileChooserDialog', { enabled: false }).catch(() => {});
+        if (tabId !== null) await ctx.tabManager.setFileChooserInterception(tabId, false).catch(() => {});
         ctx.tabManager.endFileChooser();
       }
     },

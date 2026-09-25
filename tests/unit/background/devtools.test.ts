@@ -40,25 +40,32 @@ describe('browser_network_request redirect bodies', () => {
 
   it('redacts sensitive headers regardless of casing without changing captured data', async () => {
     pageEvents.handle('Network.requestWillBeSent', { requestId: 'auth', request: {
-      url: 'https://user:password@example.test/private/path?token=secret#fragment', headers: {
+      url: 'https://user:password@example.test/reset/path-secret?token=secret#fragment', headers: {
         cOoKiE: 'session=secret', AUTHORIZATION: 'Bearer secret', 'Proxy-Authorization': 'Basic secret',
-        'X-Session-ID': 'secret', 'x-AuThToKeN': 'secret', 'X-Access-Key': 'secret', Accept: 'application/json',
+        'X-Session-ID': 'secret', 'x-AuThToKeN': 'secret', 'X-Access-Key': 'secret',
+        'X-Client-Secret': 'custom-secret', Referer: 'https://other.test/?code=referer-secret',
+        Accept: 'application/json', 'Content-Length': '42',
       },
     } });
     pageEvents.handle('Network.responseReceived', { requestId: 'auth', response: { status: 200, headers: {
-      'sEt-CoOkIe': 'session=secret; HttpOnly', 'Content-Type': 'application/json',
+      'sEt-CoOkIe': 'session=secret; HttpOnly', 'Content-Type': 'application/json; boundary=secret',
+      Location: 'https://other.test/?code=location-secret', 'Cache-Control': 'max-age=60, private',
     } } });
 
     const index = pageEvents.networkRequests()[0].index;
     const result = await handlers.browser_network_request({ index }) as Record<string, unknown>;
     expect(result.requestHeaders).toEqual({
       cOoKiE: '[REDACTED]', AUTHORIZATION: '[REDACTED]', 'Proxy-Authorization': '[REDACTED]',
-      'X-Session-ID': '[REDACTED]', 'x-AuThToKeN': '[REDACTED]', 'X-Access-Key': '[REDACTED]', Accept: 'application/json',
+      'X-Session-ID': '[REDACTED]', 'x-AuThToKeN': '[REDACTED]', 'X-Access-Key': '[REDACTED]',
+      'X-Client-Secret': '[REDACTED]', Referer: '[REDACTED]', Accept: '[REDACTED]', 'Content-Length': '42',
     });
-    expect(result.responseHeaders).toEqual({ 'sEt-CoOkIe': '[REDACTED]', 'Content-Type': 'application/json' });
-    expect(result.url).toBe('https://example.test/private/path');
+    expect(result.responseHeaders).toEqual({
+      'sEt-CoOkIe': '[REDACTED]', 'Content-Type': 'application/json',
+      Location: '[REDACTED]', 'Cache-Control': 'max-age=60, private',
+    });
+    expect(result.url).toBe('https://example.test');
     const list = await handlers.browser_network_requests({}) as { requests: Array<{ url: string }> };
-    expect(list.requests[0].url).toBe('https://example.test/private/path');
+    expect(list.requests[0].url).toBe('https://example.test');
     expect(JSON.stringify(result)).not.toContain('secret');
     expect(JSON.stringify(list)).not.toContain('secret');
     expect(pageEvents.networkRequest(index)?.requestHeaders.cOoKiE).toBe('session=secret');

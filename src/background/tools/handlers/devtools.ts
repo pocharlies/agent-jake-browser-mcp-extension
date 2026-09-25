@@ -10,28 +10,41 @@ import { schemas } from '../schemas';
 import type { HandlerContext, HandlerMap } from './types';
 
 const TEXTY = /^(text\/|application\/(json|javascript|xml|x-www-form-urlencoded|graphql|ld\+json|problem\+json))|\+json|\+xml/;
-const SENSITIVE_HEADERS = new Set([
-  'cookie', 'setcookie', 'authorization', 'proxyauthorization',
-  'xsessionid', 'xauthtoken', 'xaccesstoken', 'xaccesskey', 'xapikey', 'xcsrftoken', 'xxsrftoken',
+const DIAGNOSTIC_MIME_TYPES = new Set([
+  'application/json', 'application/javascript', 'application/xml', 'application/pdf',
+  'application/octet-stream', 'application/x-www-form-urlencoded', 'multipart/form-data',
+  'text/html', 'text/plain', 'text/css', 'text/javascript',
+  'image/png', 'image/jpeg', 'image/gif', 'image/svg+xml',
 ]);
-
 function redactUrl(raw: string): string {
   try {
     const url = new URL(raw);
     if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) return '[REDACTED URL]';
-    url.username = '';
-    url.password = '';
-    url.search = '';
-    url.hash = '';
-    return url.toString();
+    return url.origin;
   } catch {
     return '[REDACTED URL]';
   }
 }
 
+function diagnosticHeaderValue(name: string, value: string): string {
+  const key = name.toLowerCase().replace(/[-_]/g, '');
+  if (key === 'contenttype') {
+    const mime = value.split(';', 1)[0].trim().toLowerCase();
+    return DIAGNOSTIC_MIME_TYPES.has(mime) ? mime : '[REDACTED]';
+  }
+  if (key === 'contentlength') return /^\d{1,20}$/.test(value) ? value : '[REDACTED]';
+  if (key === 'cachecontrol') {
+    const directives = value.toLowerCase().split(',').map((item) => item.trim());
+    if (directives.every((item) => /^(?:public|private|no-cache|no-store|must-revalidate|proxy-revalidate|immutable|(?:s-)?max-age=\d{1,10})$/.test(item))) {
+      return directives.join(', ');
+    }
+  }
+  return '[REDACTED]';
+}
+
 function redactHeaders(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [
-    name, SENSITIVE_HEADERS.has(name.toLowerCase().replace(/[-_]/g, '')) ? '[REDACTED]' : value,
+    name, diagnosticHeaderValue(name, value),
   ]));
 }
 

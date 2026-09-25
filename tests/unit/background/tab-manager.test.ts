@@ -69,6 +69,7 @@ describe('TabManager CDP readiness', () => {
 
   it('cancels a file chooser event wait without a late timeout rejection', async () => {
     const manager = new TabManager();
+    (manager as unknown as { connectedTabId: number }).connectedTabId = 101;
     const controller = new AbortController();
     const wait = manager.waitForDebuggerEvent('Page.fileChooserOpened', 10000, controller.signal);
     controller.abort();
@@ -95,6 +96,48 @@ describe('TabManager CDP readiness', () => {
     pageEvents.handle('Network.requestWillBeSent', { requestId: 'secret2', request: { url: 'https://x.test' } });
     manager.markDebuggerDetached();
     expect(pageEvents.networkRequests()).toHaveLength(0);
+  });
+
+  it('ignores a late network event while disconnect is waiting on the close guard', async () => {
+    const manager = new TabManager();
+    (manager as unknown as { connectedTabId: number }).connectedTabId = 101;
+    (manager as unknown as { captureEvents: boolean }).captureEvents = true;
+    let releaseGuard!: () => void;
+    vi.spyOn(manager as never, 'setLiveConnectionCloseGuard' as never).mockImplementation(
+      () => new Promise<void>((resolve) => { releaseGuard = resolve; }) as never,
+    );
+
+    const disconnect = manager.disconnectTab();
+    await expect(manager.waitForDebuggerEvent('Page.fileChooserOpened')).rejects.toThrow('No connected tab');
+    await (manager as unknown as { handleDebuggerEvent: (source: { tabId: number }, method: string, params: object) => Promise<void> })
+      .handleDebuggerEvent({ tabId: 101 }, 'Network.requestWillBeSent', {
+        requestId: 'late', request: { url: 'https://x.test', headers: { Cookie: 'late-secret' } },
+      });
+    expect(pageEvents.networkRequests()).toHaveLength(0);
+    releaseGuard();
+    await disconnect;
+    expect(pageEvents.networkRequests()).toHaveLength(0);
+  });
+
+  it('rejects old chooser waits and never sends their files to a new tab', async () => {
+    const manager = new TabManager();
+    (manager as unknown as { connectedTabId: number }).connectedTabId = 101;
+    const oldWait = manager.waitForDebuggerEvent('Page.fileChooserOpened');
+    const rejected = expect(oldWait).rejects.toThrow('tab changed or detached');
+
+    await manager.disconnectTab();
+    await rejected;
+    (manager as unknown as { connectedTabId: number }).connectedTabId = 102;
+    await (manager as unknown as { handleDebuggerEvent: (source: { tabId: number }, method: string, params: object) => Promise<void> })
+      .handleDebuggerEvent({ tabId: 102 }, 'Page.fileChooserOpened', { backendNodeId: 77 });
+    await expect(manager.setChooserFiles(101, 77, ['/tmp/old-file'])).rejects.toThrow('Tab changed');
+    expect(mockChrome.debugger.sendCommand).not.toHaveBeenCalledWith(
+      { tabId: 102 }, 'DOM.setFileInputFiles', expect.anything(),
+    );
+    await manager.setFileChooserInterception(101, false);
+    expect(mockChrome.debugger.sendCommand).toHaveBeenCalledWith(
+      { tabId: 101 }, 'Page.setInterceptFileChooserDialog', { enabled: false },
+    );
   });
 
   it('reports not ready when no tab is connected', async () => {
